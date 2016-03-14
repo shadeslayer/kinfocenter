@@ -67,6 +67,12 @@ private:
 
     /** \returns Version of plasmashell or an empty string when none was found */
     QString plasmaVersion() const;
+
+    /** \returns Version of dolphin or an empty string when none was found */
+    QString appsVersion() const;
+
+    /** \returns Network status or empty string when it fails */
+    QString networkStatus() const;
 };
 
 #endif // MODULE_H

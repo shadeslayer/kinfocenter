@@ -20,9 +20,11 @@
 
 #include "Module.h"
 #include "ui_Module.h"
+#include "openglinfo.h"
 
 #include <QIcon>
 #include <QStandardPaths>
+#include <QDebug>
 
 #include <KAboutData>
 #include <KConfig>
@@ -31,9 +33,11 @@
 #include <KFormat>
 #include <KLocalizedString>
 #include <KSharedConfig>
+#include <kdeversion.h>
 
-#include <solid/device.h>
-#include <solid/processor.h>
+#include <Solid/Device>
+#include <Solid/Processor>
+#include <NetworkManagerQt/Manager>
 
 #ifdef Q_OS_LINUX
 #include <sys/sysinfo.h>
@@ -130,6 +134,15 @@ void Module::load()
     }
 
     ui->qtLabel->setText(qVersion());
+    #warning FIXME: Use KCoreAddons::versionString when it gets released in KDE Frameworks 5.20. See https://git.reviewboard.kde.org/r/127031/
+    ui->frameworksLabel->setText(KDE::versionString());
+
+    QString apps = appsVersion();
+    if (!apps.isEmpty()) {
+      ui->appsLabel->setText(apps);
+    } else {
+      ui->appsLabel->setHidden(true);
+    }
 
     struct utsname utsName;
     if(uname(&utsName) != 0) {
@@ -177,6 +190,24 @@ void Module::load()
                              ? i18nc("@label %1 is the formatted amount of system memory (e.g. 7,7 GiB)",
                                      "%1 of RAM", KFormat().formatByteSize(totalRam))
                              : i18nc("Unknown amount of RAM", "Unknown"));
+    OpenGLInfo openglInfo;
+    ui->openglLabel->setText(openglInfo.openGLRenderer);
+    ui->openglDriverLabel->setText(openglInfo.kwinDriver);
+
+    if (!openglInfo.displayServerVersion.isEmpty() && !openglInfo.displayServerVersion.isNull()) {
+      ui->displayServerVersionLabel->setText(openglInfo.displayServerVersion);
+    } else {
+      ui->displayServerVersion->setHidden(true);
+    }
+
+    QString network = networkStatus();
+    qCritical() << network;
+    if (!network.isEmpty()) {
+      ui->networkLabel->setText(network);
+    } else {
+      ui->network->setHidden(true);
+      ui->networkLabel->setHidden(true);
+    }
 }
 
 void Module::save()
@@ -202,4 +233,41 @@ QString Module::plasmaVersion() const
     // reflect the plasma session run.
     KDesktopFile desktopFile(filePaths.first());
     return desktopFile.desktopGroup().readEntry("X-KDE-PluginInfo-Version", QString());
+}
+
+QString Module::appsVersion() const
+{
+  /* Grab KF5 & Qt5 info */
+  QString kdeapps_version = QString::null;
+  /* FIXME: unsafe, replace popen with QProcess? */
+  FILE *fd1 = popen("dolphin --version", "r");
+  if (fd1) {
+      QTextStream is(fd1);
+      while (!is.atEnd()) {
+          QString line = is.readLine();
+          if (line.startsWith("dolphin")) {
+              kdeapps_version = line.section(' ', 1, 1);
+          }
+      }
+  }
+  if (fd1) {
+      /* FIXME: this is hack to do not let QTextStream touch fd after closing
+       * it. Prevents whole kio_sysinfo from crashing */
+      pclose(fd1);
+  }
+  return kdeapps_version;
+}
+
+QString Module::networkStatus() const
+{
+  NetworkManager::Connectivity connectivity = NetworkManager::connectivity();
+  switch (connectivity) {
+     case NetworkManager::Full:
+         return i18n("You are online");
+     case NetworkManager::NoConnectivity:
+         return i18n("You are offline");
+     case NetworkManager::UnknownConnectivity:
+     default:
+         return QString();
+  }
 }
